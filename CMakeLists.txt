@@ -272,6 +272,11 @@ else()
     list(APPEND PICOQUIC_COMPILE_DEFINITIONS PTLS_WITHOUT_OPENSSL)
 endif()
 
+option(USE_SCION "use SCION" OFF)
+if (USE_SCION)
+    list(APPEND PICOQUIC_COMPILE_DEFINITIONS PICOQUIC_USE_SCION)
+endif()
+
 OPTION(WITH_MBEDTLS "enable MBEDTLS" OFF)
 
 IF (WITH_MBEDTLS)
@@ -306,23 +311,23 @@ macro(set_picoquic_compile_settings)
             CXX_EXTENSIONS YES)
     target_compile_options(${ARGV0}
         PRIVATE
-            $<$<C_COMPILER_ID:Clang>: -O3 -Wall -fno-exceptions
+            $<$<C_COMPILER_ID:Clang>: -O0 -Wall -fno-exceptions
                 -fno-signed-zeros -fno-trapping-math
                 ${PICOQUIC_ADDITIONAL_C_FLAGS}>
-            $<$<C_COMPILER_ID:AppleClang>: -O3 -Wall -fno-exceptions
+            $<$<C_COMPILER_ID:AppleClang>: -O0Wall -fno-exceptions
                 -fno-signed-zeros -fno-trapping-math
                 ${PICOQUIC_ADDITIONAL_C_FLAGS}>
-            $<$<C_COMPILER_ID:GNU>: -O3 -Wall -fno-exceptions
+            $<$<C_COMPILER_ID:GNU>: -O0 -Wall -fno-exceptions
                 -fno-signed-zeros -frename-registers -fno-trapping-math
                 ${PICOQUIC_ADDITIONAL_C_FLAGS}>
             $<$<C_COMPILER_ID:MSVC>: >
-            $<$<CXX_COMPILER_ID:Clang>: -O3 -Wall -fno-exceptions
+            $<$<CXX_COMPILER_ID:Clang>: -O0 -Wall -fno-exceptions
                 -fno-signed-zeros -fno-trapping-math
                 ${PICOQUIC_ADDITIONAL_CXX_FLAGS}>
-            $<$<CXX_COMPILER_ID:AppleClang>: -O3 -Wall -fno-exceptions
+            $<$<CXX_COMPILER_ID:AppleClang>: -O0 -Wall -fno-exceptions
                 -fno-signed-zeros -fno-trapping-math
                 ${PICOQUIC_ADDITIONAL_CXX_FLAGS}>
-            $<$<CXX_COMPILER_ID:GNU>: -O3 -Wall -fno-exceptions
+            $<$<CXX_COMPILER_ID:GNU>: -O0 -Wall -fno-exceptions
                 -fno-signed-zeros -frename-registers -fno-trapping-math
                 ${PICOQUIC_ADDITIONAL_CXX_FLAGS}>
             $<$<CXX_COMPILER_ID:MSVC>: >)
@@ -341,12 +346,14 @@ target_include_directories(picoquic-core
         ${OPENSSL_INCLUDE_DIR}
     PUBLIC
         ${MBEDTLS_INCLUDE_DIRS}
+        ${SCION_INCLUDE_DIR}
         picoquic
         picoquic_mbedtls)
 target_link_libraries(picoquic-core
     PRIVATE
         ${OPENSSL_LIBRARIES}
         ${MBEDTLS_LIBRARIES}
+        ${SCION_LIBRARIES}
     PUBLIC
         ${PTLS_LIBRARIES}
         Threads::Threads)
@@ -456,14 +463,10 @@ if(BUILD_TESTING AND picoquic_BUILD_TESTS)
         sample/sample_server.c)
     target_link_libraries(picoquic_sample PRIVATE 
         picoquic-log 
-        picoquic-core
-        ${CMAKE_CURRENT_SOURCE_DIR}/csnet-dist/lib/libscion.a
-        ${CMAKE_CURRENT_SOURCE_DIR}/csnet-dist/lib/libnghttp2.a
-        ${CMAKE_CURRENT_SOURCE_DIR}/csnet-dist/lib/libprotobuf-c.a)
+        picoquic-core)
     target_include_directories(picoquic_sample PRIVATE 
         loglib 
-        picoquic
-        ${CMAKE_CURRENT_SOURCE_DIR}/csnet-dist/include)
+        picoquic)
     set_picoquic_compile_settings(picoquic_sample)
 
     add_test(NAME picoquic_ct

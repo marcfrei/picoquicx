@@ -46,13 +46,22 @@ int picoquic_bind_to_port(SOCKET_TYPE fd, int af, int port)
         addr_length = sizeof(struct sockaddr_in6);
     }
 
+#ifdef PICOQUIC_USE_SCION
+    return scion_bind(fd, (struct sockaddr*)&sa, addr_length);
+#else
     return bind(fd, (struct sockaddr*)&sa, addr_length);
+#endif
 }
 
 int picoquic_get_local_address(SOCKET_TYPE sd, struct sockaddr_storage * addr)
 {
     socklen_t name_len = sizeof(struct sockaddr_storage);
+
+#ifdef PICOQUIC_USE_SCION
+    return scion_getsockname(sd, (struct sockaddr *)addr, &name_len, NULL);
+#else
     return getsockname(sd, (struct sockaddr *)addr, &name_len);
+#endif
 }
 
 int picoquic_socket_set_pkt_info(SOCKET_TYPE sd, int af)
@@ -66,6 +75,9 @@ int picoquic_socket_set_pkt_info(SOCKET_TYPE sd, int af)
     else {
         ret = setsockopt(sd, IPPROTO_IP, IP_PKTINFO, (char*)&option_value, sizeof(int));
     }
+#else
+#ifdef PICOQUIC_USE_SCION
+    ret = 0;
 #else
     if (af == AF_INET6) {
         int val = 1;
@@ -85,6 +97,7 @@ int picoquic_socket_set_pkt_info(SOCKET_TYPE sd, int af)
         ret = setsockopt(sd, IPPROTO_IP, IP_RECVDSTADDR, (char*)&val, sizeof(int));
 #endif
     }
+#endif
 #endif
 
     return ret;
@@ -140,6 +153,9 @@ int picoquic_socket_set_ecn_options(SOCKET_TYPE sd, int af, int * recv_set, int 
 #endif
         *send_set = 0;
     }
+#else
+#ifdef PICOQUIC_USE_SCION
+    ret = 0;
 #else
     if (af == AF_INET6) {
 #if defined(IPV6_TCLASS)
@@ -217,6 +233,7 @@ int picoquic_socket_set_ecn_options(SOCKET_TYPE sd, int af, int * recv_set, int 
 #endif
     }
 #endif
+#endif
 
     return ret;
 }
@@ -224,6 +241,7 @@ int picoquic_socket_set_ecn_options(SOCKET_TYPE sd, int af, int * recv_set, int 
 int picoquic_socket_set_pmtud_options(SOCKET_TYPE sd, int af)
 {
     int ret = 0;
+#ifndef PICOQUIC_USE_SCION
 #if defined __linux && defined(IP_MTU_DISCOVER) && defined(IPV6_MTU_DISCOVER) && defined(IP_PMTUDISC_PROBE)
     int val = IP_PMTUDISC_PROBE;
     if (af == AF_INET6) {
@@ -238,9 +256,11 @@ int picoquic_socket_set_pmtud_options(SOCKET_TYPE sd, int af)
     UNREFERENCED_PARAMETER(sd);
 #endif
 #endif  /* #if defined __linux && ... */
+#endif
     return ret;
 }
 
+#ifndef PICOQUIC_USE_SCION
 SOCKET_TYPE picoquic_open_client_socket(int af)
 {
 #ifdef _WINDOWS
@@ -327,6 +347,8 @@ void picoquic_close_server_sockets(picoquic_server_sockets_t* sockets)
         }
     }
 }
+
+#endif
 
 void picoquic_socks_cmsg_parse(
     void* vmsg,
@@ -1004,6 +1026,16 @@ int picoquic_recvmsg(SOCKET_TYPE fd,
 }
 #else
 {
+#ifdef PICOQUIC_USE_SCION
+    socklen_t addr_len;
+    int bytes_recv = (int)scion_recvfrom(fd, buffer, buffer_max, 0, (struct sockaddr *)addr_from, &addr_len, NULL, NULL);
+    *received_ecn = PICOQUIC_ECN_ECT_1;
+    *dest_if = 0;
+    socklen_t addr_dest_len;
+    scion_getsockname(fd, (struct sockaddr *)addr_dest, &addr_dest_len, NULL);
+
+
+#else
     int bytes_recv = 0;
     struct msghdr msg;
     struct iovec dataBuf;
@@ -1031,6 +1063,7 @@ int picoquic_recvmsg(SOCKET_TYPE fd,
     } else {
         picoquic_socks_cmsg_parse(&msg, addr_dest, dest_if, received_ecn, NULL);
     }
+#endif
 
     return bytes_recv;
 }
@@ -1109,7 +1142,15 @@ int picoquic_sendmsg(SOCKET_TYPE fd,
     return bytes_sent;
 }
 #else
+
 {
+#ifdef PICOQUIC_USE_SCION
+    // TODO get rid of hardcoded dst_ia
+    int bytes_sent = (int)scion_sendto(fd, bytes, length, 0, addr_dest, picoquic_addr_length(addr_dest), 0x1ff0000000133, NULL);
+    (void)addr_from;
+    (void)dest_if;
+    (void)send_msg_size;
+#else
     struct msghdr msg;
     struct iovec dataBuf;
     char cmsg_buffer[1024];
@@ -1132,10 +1173,14 @@ int picoquic_sendmsg(SOCKET_TYPE fd,
     picoquic_socks_cmsg_format(&msg, length, send_msg_size, addr_from, dest_if);
 
     bytes_sent = sendmsg(fd, &msg, 0);
-
+#endif
 
     if (bytes_sent <= 0) {
+#ifdef PICOQUIC_USE_SCION
+        int last_error = bytes_sent;
+#else
         int last_error = errno;
+#endif
 #ifndef DISABLE_DEBUG_PRINTF
         DBG_PRINTF("Could not send packet on UDP socket[AF=%d]= %d!\n",
             addr_dest->sa_family, last_error);
@@ -1148,6 +1193,7 @@ int picoquic_sendmsg(SOCKET_TYPE fd,
 }
 #endif
 
+#ifndef PICOQUIC_USE_SCION
 int picoquic_select_ex(SOCKET_TYPE* sockets,
     int nb_sockets,
     struct sockaddr_storage* addr_from,
@@ -1265,6 +1311,7 @@ int picoquic_send_through_server_sockets(
 
     return picoquic_send_through_socket(sockets->s_socket[socket_index], addr_dest, addr_from, from_if, bytes, length, sock_err);
 }
+#endif
 
 int picoquic_get_server_address(const char* ip_address_text, int server_port,
     struct sockaddr_storage* server_address, int* is_name)

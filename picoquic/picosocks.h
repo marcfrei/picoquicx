@@ -92,6 +92,22 @@
 #include <netinet/udp.h>
 #include <sys/select.h>
 
+#ifdef PICOQUIC_USE_SCION
+
+#include <scion/scion.h>
+#ifndef SOCKET_TYPE
+#define SOCKET_TYPE struct scion_socket *
+#endif
+#ifndef INVALID_SOCKET
+#define INVALID_SOCKET (NULL)
+#endif
+#ifndef SOCKET_CLOSE
+#define SOCKET_CLOSE(x) scion_close(x)
+#endif
+#ifndef WSA_LAST_ERROR
+#define WSA_LAST_ERROR(x) ((long)(x))
+#endif
+#else
 #ifndef SOCKET_TYPE
 #define SOCKET_TYPE int
 #endif
@@ -106,6 +122,7 @@
 #endif
 #ifndef IPV6_RECVPKTINFO
 #define IPV6_RECVPKTINFO IPV6_PKTINFO /* Cygwin */
+#endif
 #endif
 #endif
 
@@ -176,16 +193,19 @@ int picoquic_bind_to_port(SOCKET_TYPE fd, int af, int port);
 
 int picoquic_get_local_address(SOCKET_TYPE sd, struct sockaddr_storage * addr);
 
+#ifndef PICOQUIC_USE_SCION
 SOCKET_TYPE picoquic_open_client_socket(int af);
 
 int picoquic_open_server_sockets(picoquic_server_sockets_t* sockets, int port);
 
 void picoquic_close_server_sockets(picoquic_server_sockets_t* sockets);
+#endif
 
 int picoquic_socket_set_pkt_info(SOCKET_TYPE sd, int af);
 int picoquic_socket_set_ecn_options(SOCKET_TYPE sd, int af, int * recv_set, int * send_set);
 int picoquic_socket_set_pmtud_options(SOCKET_TYPE sd, int af);
 
+#ifndef PICOQUIC_USE_SCION
 int picoquic_select(SOCKET_TYPE* sockets, int nb_sockets,
     struct sockaddr_storage* addr_from,
     struct sockaddr_storage* addr_dest,
@@ -205,6 +225,7 @@ int picoquic_select_ex(SOCKET_TYPE* sockets,
     int64_t delta_t,
     int* socket_rank,
     uint64_t* current_time);
+#endif
 
 int picoquic_recvmsg(SOCKET_TYPE fd,
     struct sockaddr_storage* addr_from,
@@ -220,6 +241,7 @@ int picoquic_sendmsg(SOCKET_TYPE fd,
     const char* bytes, int length,
     int send_msg_size, int * sock_err);
 
+#ifndef PICOQUIC_USE_SCION
 int picoquic_send_through_socket(
     SOCKET_TYPE fd,
     struct sockaddr* addr_dest,
@@ -231,6 +253,7 @@ int picoquic_send_through_server_sockets(
     struct sockaddr* addr_dest, 
     struct sockaddr* addr_from, int from_if,
     const char* bytes, int length, int * sock_err);
+#endif
 
 int picoquic_get_server_address(const char* ip_address_text, int server_port,
     struct sockaddr_storage* server_address,
